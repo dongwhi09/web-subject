@@ -1,16 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Check, X, Send, Moon, Sun, Bot } from 'lucide-react';
 
 const CalendarApp = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [schedules, setSchedules] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newSchedule, setNewSchedule] = useState({ title: '', time: '', description: '' });
+  const [newSchedule, setNewSchedule] = useState({ 
+    title: '', 
+    date: new Date().toISOString().split('T')[0], // 오늘 날짜로 초기화
+    time: null, // 시간은 선택사항으로 null로 초기화
+    description: '' 
+  });
+  const [addFormError, setAddFormError] = useState('');
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
+
+  // Load schedules from localStorage into initial state
+  const savedSchedules = localStorage.getItem('schedules');
+  const initialSchedules = savedSchedules ? JSON.parse(savedSchedules) : [];
+  const [schedules, setSchedules] = useState(initialSchedules);
+
+  // This useEffect is no longer needed since we load schedules in initial state
+  useEffect(() => {
+    // No longer needed
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('schedules', JSON.stringify(schedules));
+  }, [schedules]);
 
   // 날짜 파싱 함수
   const parseDate = (dateString) => {
@@ -180,27 +199,43 @@ const CalendarApp = () => {
 
   // 일정 관리 함수들
   const addSchedule = (schedule, targetDate = null) => {
-    const scheduleDate = targetDate || selectedDate;
+    // targetDate가 있으면 사용하고, 없으면 schedule.date 또는 selectedDate 사용
+    let scheduleDate;
+    if (targetDate) {
+      scheduleDate = targetDate;
+    } else if (schedule.date) {
+      scheduleDate = new Date(schedule.date);
+    } else {
+      scheduleDate = selectedDate;
+    }
+    
     const newSched = {
       id: Date.now(),
       date: scheduleDate.toDateString(),
-      ...schedule,
+      title: schedule.title,
+      time: schedule.time,
+      description: schedule.description || '',
       completed: false
     };
-    setSchedules([...schedules, newSched]);
-    setNewSchedule({ title: '', time: '', description: '' });
+    setSchedules(prevSchedules => [...prevSchedules, newSched]);
+    setNewSchedule({ 
+      title: '', 
+      date: new Date().toISOString().split('T')[0], 
+      time: '09:00', 
+      description: '' 
+    });
     setShowAddForm(false);
     return newSched;
   };
 
   const toggleScheduleComplete = (id) => {
-    setSchedules(schedules.map(s => 
+    setSchedules(prevSchedules => prevSchedules.map(s => 
       s.id === id ? { ...s, completed: !s.completed } : s
     ));
   };
 
   const deleteSchedule = (id) => {
-    setSchedules(schedules.filter(s => s.id !== id));
+    setSchedules(prevSchedules => prevSchedules.filter(s => s.id !== id));
   };
 
   const getSchedulesForDate = (date) => {
@@ -301,6 +336,14 @@ const CalendarApp = () => {
       setIsAiLoading(false);
     }
   };
+
+  // 미리 정의된 시간 옵션들
+  const timeOptions = [
+    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+    '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
+    '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30',
+    '20:00', '20:30', '21:00', '21:30', '22:00'
+  ];
 
   // 달력 렌더링
   const renderCalendar = () => {
@@ -449,19 +492,44 @@ const CalendarApp = () => {
                         : 'bg-white text-black placeholder-gray-400'
                     }`}
                   />
+                  
+                  {/* 날짜 선택 */}
                   <input
-                    type="time"
-                    value={newSchedule.time}
-                    onChange={(e) => setNewSchedule({...newSchedule, time: e.target.value})}
+                    type="date"
+                    value={newSchedule.date}
+                    onChange={(e) => setNewSchedule({...newSchedule, date: e.target.value})}
                     className={`w-full p-3 rounded-lg border-0 text-sm mb-3 focus:outline-none ${
                       isDarkMode 
                         ? 'bg-black text-white' 
                         : 'bg-white text-black'
                     }`}
                   />
+                  
+                  {/* 시간 선택 드롭다운 */}
+                  <select
+                    value={newSchedule.time || ''}
+                    onChange={(e) => setNewSchedule({...newSchedule, time: e.target.value})}
+                    className={`w-full p-3 rounded-lg border-0 text-sm mb-3 focus:outline-none ${
+                      isDarkMode 
+                        ? 'bg-black text-white' 
+                        : 'bg-white text-black'
+                    }`}
+                  >
+                    {timeOptions.map(time => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
+                  
                   <div className="flex gap-2">
                     <button
-                      onClick={() => newSchedule.title && addSchedule(newSchedule)}
+                      onClick={() => {
+                        if (!newSchedule.title.trim()) {
+                          setAddFormError('일정 제목을 입력해주세요');
+                          return;
+                        }
+                        setAddFormError('');
+                        addSchedule(newSchedule);
+                      }}
                       className={`flex-1 py-2 text-sm rounded-lg transition-colors ${
                         isDarkMode 
                           ? 'bg-white text-black hover:bg-gray-200' 
@@ -482,6 +550,12 @@ const CalendarApp = () => {
                 </div>
               )}
 
+              {addFormError && (
+                <div className={`text-red-500 text-sm mt-2 ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                  {addFormError}
+                </div>
+              )}
+
               <div className="space-y-2">
                 {getSchedulesForDate(selectedDate).map(schedule => (
                   <div
@@ -498,7 +572,7 @@ const CalendarApp = () => {
                           {schedule.title}
                         </h4>
                         <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {schedule.time}
+                          {schedule.time ? schedule.time : 'All Day'}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -553,19 +627,24 @@ const CalendarApp = () => {
                     {chatHistory.map((chat, index) => (
                       <div
                         key={index}
-                        className={`text-sm p-2 rounded max-w-[85%] ${
+                        className={`p-3 rounded-lg ${
                           chat.type === 'user' 
-                            ? `ml-auto ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}` 
-                            : `${isDarkMode ? 'bg-gray-800' : 'bg-white'} ${chat.isAI ? 'border-l-2 border-blue-500' : ''}`
+                            ? (isDarkMode ? 'bg-gray-800' : 'bg-gray-100')
+                            : (isDarkMode ? 'bg-gray-900' : 'bg-gray-50')
                         }`}
                       >
-                        <div className="whitespace-pre-line">{chat.message}</div>
-                        {chat.isAI && (
-                          <div className="flex items-center gap-1 mt-1 opacity-60">
-                            <Bot size={12} />
-                            <span className="text-xs">AI</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {chat.type === 'user' ? (
+                            <div className={`w-6 h-6 rounded-full ${isDarkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+                          ) : (
+                            <Bot size={16} className="text-blue-500" />
+                          )}
+                          <p className={`text-sm ${
+                            chat.type === 'user' ? (isDarkMode ? 'text-white' : 'text-black') : (isDarkMode ? 'text-gray-400' : 'text-gray-500')
+                          }`}>
+                            {chat.message}
+                          </p>
+                        </div>
                       </div>
                     ))}
                     {isAiLoading && (
