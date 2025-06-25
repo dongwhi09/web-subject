@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Check, X, Send, Moon, Sun, Bot } from 'lucide-react';
 
 const CalendarApp = () => {
@@ -7,8 +7,8 @@ const CalendarApp = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newSchedule, setNewSchedule] = useState({ 
     title: '', 
-    date: new Date().toISOString().split('T')[0], // 오늘 날짜로 초기화
-    time: null, // 시간은 선택사항으로 null로 초기화
+    date: new Date().toISOString().split('T')[0],
+    time: null, // All day로 기본 설정
     description: '' 
   });
   const [addFormError, setAddFormError] = useState('');
@@ -16,101 +16,169 @@ const CalendarApp = () => {
   const [chatHistory, setChatHistory] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isAiLoading, ] = useState(false);
+  const [schedules, setSchedules] = useState([]);
 
-  // Load schedules from localStorage into initial state
-  const savedSchedules = localStorage.getItem('schedules');
-  const initialSchedules = savedSchedules ? JSON.parse(savedSchedules) : [];
-  const [schedules, setSchedules] = useState(initialSchedules);
+  // 현재 날짜를 YYYY-MM-DD 형식으로 반환
+  const formatDateToString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  // This useEffect is no longer needed since we load schedules in initial state
-  useEffect(() => {
-    // No longer needed
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('schedules', JSON.stringify(schedules));
-  }, [schedules]);
-
-  // OpenAI API 호출 함수
-  // OpenAI API 호출 함수 추가
-const callOpenAI = async (prompt) => {
-  const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
-  
-  if (!apiKey) {
-    return { error: "OpenAI API Key가 환경변수에 설정되어 있지 않습니다." };
-  }
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: "너는 한국어로 일정 관리 도우미야. 사용자가 자연어로 일정을 추가, 조회, 삭제하면, 날짜(date:YYYY-MM-DD), 행동(action:add|query|delete), 내용(content, 옵션)을 JSON으로 반환해. 예시: {\"action\":\"add\",\"date\":\"2025-07-05\",\"content\":\"친구 만나기\"}, {\"action\":\"query\",\"date\":\"2025-07-05\"}, {\"action\":\"delete\",\"date\":\"2025-07-05\",\"content\":\"친구 만나기\"} 또는 {\"action\":\"delete\",\"date\":\"2025-07-05\"}" },
-          { role: "user", content: prompt },
-        ],
-        max_tokens: 128,
-        temperature: 0.2,
-      }),
-    });
-    const data = await response.json();
+  // 날짜 문자열을 Date 객체로 안전하게 변환
+  const parseDate = (dateString) => {
+    if (!dateString) return new Date();
     
-    // 답변에서 JSON 파싱
-    const text = data.choices[0].message.content.match(/\{[\s\S]*\}/)[0];
-    return JSON.parse(text);
-  } catch (error) {
-    return { error: "AI가 명령을 이해하지 못했어요. 다시 시도해 주세요." };
-  }
-};
-
-const processCommand = async (message) => {
-  const parsed = await callOpenAI(message);
-  
-  if (parsed.error) {
-    return parsed.error;
-  }
-
-  const targetDate = parsed.date ? new Date(parsed.date) : selectedDate;
-  
-  if (parsed.action === "add") {
-    const newSched = {
-      id: Date.now(),
-      date: targetDate.toDateString(),
-      title: parsed.content,
-      time: '09:00',
-      description: '',
-      completed: false
-    };
-    setSchedules([...schedules, newSched]);
-    return `${parsed.date || formatDate(selectedDate)}에 '${parsed.content}' 일정이 추가되었습니다.`;
-    
-  } else if (parsed.action === "query") {
-    const targetSchedules = schedules.filter(s => s.date === targetDate.toDateString());
-    if (targetSchedules.length > 0) {
-      return `${parsed.date || formatDate(selectedDate)} 일정:\n${targetSchedules.map(s => 
-        `• ${s.title} ${s.time} ${s.completed ? '✓' : ''}`
-      ).join('\n')}`;
-    } else {
-      return `${parsed.date || formatDate(selectedDate)}에는 일정이 없습니다.`;
+    // YYYY-MM-DD 형식 확인
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateString)) {
+      return new Date();
     }
     
-  } else if (parsed.action === "delete") {
-    if (parsed.content) {
-      return `${parsed.date || formatDate(selectedDate)}의 '${parsed.content}' 관련 일정이 삭제되었습니다.`;
-    } else {
-      // 해당 날짜의 모든 일정 삭제
-      setSchedules(schedules.filter(s => s.date !== targetDate.toDateString()));
-      return `${parsed.date || formatDate(selectedDate)}의 모든 일정이 삭제되었습니다.`;
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  // AI 응답을 시뮬레이션하는 함수 (실제 OpenAI API 대신)
+  const simulateAI = async (prompt) => {
+    // 간단한 패턴 매칭으로 AI 응답 시뮬레이션
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // 시간 패턴 추출 (예: "3시", "오후 2시", "14:00" 등)
+    const timePatterns = [
+      /(\d{1,2})시(?:\s*(\d{1,2})분)?/,  // "3시", "3시 30분"
+      /오전\s*(\d{1,2})시(?:\s*(\d{1,2})분)?/,  // "오전 9시"
+      /오후\s*(\d{1,2})시(?:\s*(\d{1,2})분)?/,  // "오후 3시"
+      /(\d{1,2}):(\d{2})/  // "14:30"
+    ];
+    
+    let extractedTime = null;
+    
+    for (const pattern of timePatterns) {
+      const match = lowerPrompt.match(pattern);
+      if (match) {
+        let hour = parseInt(match[1]);
+        let minute = match[2] ? parseInt(match[2]) : 0;
+        
+        // 오후 처리
+        if (lowerPrompt.includes('오후') && hour < 12) {
+          hour += 12;
+        }
+        
+        // 시간 형식으로 변환
+        extractedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        break;
+      }
     }
-  } else {
-    return "알 수 없는 명령입니다.";
-  }
-};
+    
+    if (lowerPrompt.includes('내일') && lowerPrompt.includes('추가')) {
+      const content = prompt.replace(/내일|추가해줘|추가|일정|\d{1,2}시|\d{1,2}:\d{2}|오전|오후|\d{1,2}분/g, '').trim();
+      return {
+        action: 'add',
+        date: formatDateToString(tomorrow),
+        content: content || '새 일정',
+        time: extractedTime // 시간이 명시되지 않으면 null (All day)
+      };
+    }
+    
+    if (lowerPrompt.includes('오늘') && lowerPrompt.includes('추가')) {
+      const content = prompt.replace(/오늘|추가해줘|추가|일정|\d{1,2}시|\d{1,2}:\d{2}|오전|오후|\d{1,2}분/g, '').trim();
+      return {
+        action: 'add',
+        date: formatDateToString(today),
+        content: content || '새 일정',
+        time: extractedTime
+      };
+    }
+    
+    if (lowerPrompt.includes('일정') && lowerPrompt.includes('추가')) {
+      const content = prompt.replace(/추가해줘|추가|일정|\d{1,2}시|\d{1,2}:\d{2}|오전|오후|\d{1,2}분/g, '').trim();
+      return {
+        action: 'add',
+        date: formatDateToString(selectedDate),
+        content: content || '새 일정',
+        time: extractedTime
+      };
+    }
+    
+    if (lowerPrompt.includes('오늘') && (lowerPrompt.includes('알려') || lowerPrompt.includes('조회'))) {
+      return {
+        action: 'query',
+        date: formatDateToString(today)
+      };
+    }
+    
+    if (lowerPrompt.includes('내일') && (lowerPrompt.includes('알려') || lowerPrompt.includes('조회'))) {
+      return {
+        action: 'query',
+        date: formatDateToString(tomorrow)
+      };
+    }
+    
+    if (lowerPrompt.includes('삭제')) {
+      return {
+        action: 'delete',
+        date: formatDateToString(selectedDate),
+        content: prompt.replace(/삭제|해줘/g, '').trim()
+      };
+    }
+    
+    return { error: "명령을 이해하지 못했습니다. 다시 시도해주세요." };
+  };
+
+  const processCommand = async (message) => {
+    const parsed = await simulateAI(message);
+    
+    if (parsed.error) {
+      return parsed.error;
+    }
+
+    const targetDate = parsed.date ? parseDate(parsed.date) : selectedDate;
+    
+    if (parsed.action === "add") {
+      const newSched = {
+        id: Date.now(),
+        date: targetDate.toDateString(),
+        title: parsed.content,
+        time: parsed.time || null, // 시간이 없으면 null (All day)
+        description: '',
+        completed: false
+      };
+      setSchedules(prev => [...prev, newSched]);
+      const timeInfo = parsed.time ? `${parsed.time}에` : '';
+      return `${formatDateFull(targetDate)} ${timeInfo} '${parsed.content}' 일정이 추가되었습니다.`;
+      
+    } else if (parsed.action === "query") {
+      const targetSchedules = schedules.filter(s => s.date === targetDate.toDateString());
+      if (targetSchedules.length > 0) {
+        return `${formatDateFull(targetDate)} 일정:\n${targetSchedules.map(s => 
+          `• ${s.title} ${s.time} ${s.completed ? '✓' : ''}`
+        ).join('\n')}`;
+      } else {
+        return `${formatDateFull(targetDate)}에는 일정이 없습니다.`;
+      }
+      
+    } else if (parsed.action === "delete") {
+      if (parsed.content) {
+        const filteredSchedules = schedules.filter(s => 
+          s.date !== targetDate.toDateString() || 
+          !s.title.toLowerCase().includes(parsed.content.toLowerCase())
+        );
+        setSchedules(filteredSchedules);
+        return `${formatDateFull(targetDate)}의 '${parsed.content}' 관련 일정이 삭제되었습니다.`;
+      } else {
+        setSchedules(schedules.filter(s => s.date !== targetDate.toDateString()));
+        return `${formatDateFull(targetDate)}의 모든 일정이 삭제되었습니다.`;
+      }
+    } else {
+      return "알 수 없는 명령입니다.";
+    }
+  };
 
   // 달력 렌더링을 위한 함수들
   const getDaysInMonth = (date) => {
@@ -119,13 +187,6 @@ const processCommand = async (message) => {
 
   const getFirstDayOfMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const formatDate = (date) => {
-    return date.toLocaleDateString('ko-KR', {
-      month: 'long',
-      day: 'numeric'
-    });
   };
 
   const formatDateFull = (date) => {
@@ -141,22 +202,14 @@ const processCommand = async (message) => {
   };
 
   // 일정 관리 함수들
-  const addSchedule = (schedule, targetDate = null) => {
-    // targetDate가 있으면 사용하고, 없으면 schedule.date 또는 selectedDate 사용
-    let scheduleDate;
-    if (targetDate) {
-      scheduleDate = targetDate;
-    } else if (schedule.date) {
-      scheduleDate = new Date(schedule.date);
-    } else {
-      scheduleDate = selectedDate;
-    }
+  const addSchedule = (schedule) => {
+    const scheduleDate = schedule.date ? parseDate(schedule.date) : selectedDate;
     
     const newSched = {
       id: Date.now(),
       date: scheduleDate.toDateString(),
       title: schedule.title,
-      time: schedule.time,
+      time: schedule.time || null, // null이면 All day
       description: schedule.description || '',
       completed: false
     };
@@ -164,7 +217,7 @@ const processCommand = async (message) => {
     setNewSchedule({ 
       title: '', 
       date: new Date().toISOString().split('T')[0], 
-      time: '09:00', 
+      time: null, // All day로 초기화
       description: '' 
     });
     setShowAddForm(false);
@@ -357,7 +410,6 @@ const processCommand = async (message) => {
                     }`}
                   />
                   
-                  {/* 날짜 선택 */}
                   <input
                     type="date"
                     value={newSchedule.date}
@@ -369,16 +421,16 @@ const processCommand = async (message) => {
                     }`}
                   />
                   
-                  {/* 시간 선택 드롭다운 */}
                   <select
                     value={newSchedule.time || ''}
-                    onChange={(e) => setNewSchedule({...newSchedule, time: e.target.value})}
+                    onChange={(e) => setNewSchedule({...newSchedule, time: e.target.value || null})}
                     className={`w-full p-3 rounded-lg border-0 text-sm mb-3 focus:outline-none ${
                       isDarkMode 
                         ? 'bg-black text-white' 
                         : 'bg-white text-black'
                     }`}
                   >
+                    <option value="">All Day</option>
                     {timeOptions.map(time => (
                       <option key={time} value={time}>{time}</option>
                     ))}
@@ -415,7 +467,7 @@ const processCommand = async (message) => {
               )}
 
               {addFormError && (
-                <div className={`text-red-500 text-sm mt-2 ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                <div className="text-red-500 text-sm mt-2">
                   {addFormError}
                 </div>
               )}
@@ -482,8 +534,8 @@ const processCommand = async (message) => {
                   <div className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                     <p className="mb-2">💡 AI로 일정을 관리해보세요!</p>
                     <p className="text-xs">예시:</p>
-                    <p className="text-xs">• "내일 3시에 회의 일정 추가해줘"</p>
-                    <p className="text-xs">• "다음 주 화요일 발표 준비"</p>
+                    <p className="text-xs">• "내일 오후 3시에 회의 일정 추가해줘"</p>
+                    <p className="text-xs">• "오늘 발표 준비 추가"</p>
                     <p className="text-xs">• "오늘 일정 알려줘"</p>
                   </div>
                 ) : (
@@ -491,34 +543,18 @@ const processCommand = async (message) => {
                     {chatHistory.map((chat, index) => (
                       <div
                         key={index}
-                        className={`p-3 rounded-lg ${
+                        className={`p-2 rounded text-sm ${
                           chat.type === 'user' 
-                            ? (isDarkMode ? 'bg-gray-800' : 'bg-gray-100')
-                            : (isDarkMode ? 'bg-gray-900' : 'bg-gray-50')
+                            ? (isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-black')
+                            : (isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-blue-50 text-gray-700')
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          {chat.type === 'user' ? (
-                            <div className={`w-6 h-6 rounded-full ${isDarkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
-                          ) : (
-                            <Bot size={16} className="text-blue-500" />
-                          )}
-                          <p className={`text-sm ${
-                            chat.type === 'user' ? (isDarkMode ? 'text-white' : 'text-black') : (isDarkMode ? 'text-gray-400' : 'text-gray-500')
-                          }`}>
-                            {chat.message}
-                          </p>
+                        <div className="flex items-start gap-2">
+                          {chat.type === 'bot' && <Bot size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />}
+                          <div className="whitespace-pre-line">{chat.message}</div>
                         </div>
                       </div>
                     ))}
-                    {isAiLoading && (
-                      <div className={`text-sm p-2 rounded max-w-[85%] ${isDarkMode ? 'bg-gray-800' : 'bg-white'} border-l-2 border-blue-500`}>
-                        <div className="flex items-center gap-2">
-                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                          <span>AI가 생각중...</span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -529,13 +565,13 @@ const processCommand = async (message) => {
                   placeholder="AI에게 일정 관리를 요청해보세요..."
                   value={chatMessage}
                   onChange={(e) => setChatMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !isAiLoading && handleChatSubmit()}
-                  disabled={isAiLoading}
+                  onKeyPress={(e) => e.key === 'Enter' && !loading && handleChatSubmit()}
+                  disabled={loading}
                   className={`flex-1 p-3 rounded-lg border-0 text-sm focus:outline-none ${
                     isDarkMode 
                       ? 'bg-gray-900 text-white placeholder-gray-500' 
                       : 'bg-gray-100 text-black placeholder-gray-400'
-                  } ${isAiLoading ? 'opacity-50' : ''}`}
+                  } ${loading ? 'opacity-50' : ''}`}
                 />
                 <button
                   onClick={handleChatSubmit}
@@ -549,7 +585,7 @@ const processCommand = async (message) => {
                       ? 'bg-white text-black hover:bg-gray-200' 
                       : 'bg-black text-white hover:bg-gray-800'
                   }`}
-                  >
+                >
                   {loading ? '...' : <Send size={16} />}
                 </button>
               </div>
