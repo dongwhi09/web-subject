@@ -26,7 +26,15 @@ const CalendarApp = () => {
   // 로딩 상태
   const [loading, setLoading] = useState(false);
   // 일정 목록 상태
-  const [schedules, setSchedules] = useState([]);
+  const [schedules, setSchedules] = useState(() => {
+    const savedSchedules = localStorage.getItem('schedules');
+    return savedSchedules ? JSON.parse(savedSchedules) : [];
+  });
+
+  // 일정 데이터 변경 시 로컬스토리지에 저장
+  React.useEffect(() => {
+    localStorage.setItem('schedules', JSON.stringify(schedules));
+  }, [schedules]);
 
   // 날짜를 YYYY-MM-DD 형식의 문자열로 변환
 const formatDateToString = (date) => {
@@ -92,6 +100,7 @@ const processCommand = async (message) => {
         completed: false
       };
       setSchedules(prev => [...prev, newSched]);
+      localStorage.setItem('schedules', JSON.stringify([...schedules, newSched]));
       return `${formatDateFull(targetDate)}에 '${title}' 일정이 추가되었습니다.`;
       
     } else if (lowerMessage.includes('조회') || lowerMessage.includes('알려')) {
