@@ -21,7 +21,6 @@ const CalendarApp = () => {
       const savedDarkMode = localStorage.getItem('calendar_dark_mode');
       return savedDarkMode ? JSON.parse(savedDarkMode) : false;
     } catch (error) {
-      console.error('다크모드 설정 로드 오류:', error);
       return false;
     }
   });
@@ -58,7 +57,6 @@ const CalendarApp = () => {
         setSchedules(normalized);
       }
     } catch (e) {
-      console.error('일정 로딩 실패:', e);
     } finally {
       setIsLoaded(true); // 불러오기 완료
     }
@@ -69,7 +67,6 @@ const CalendarApp = () => {
     try {
       localStorage.setItem('calendar_schedules', JSON.stringify(schedules));
     } catch (e) {
-      console.error('일정 저장 실패:', e);
     }
   }, [schedules, isLoaded]);
 
@@ -78,7 +75,6 @@ const CalendarApp = () => {
     try {
       localStorage.setItem('calendar_dark_mode', JSON.stringify(isDarkMode));
     } catch (error) {
-      console.error('다크모드 설정 저장 오류:', error);
     }
   }, [isDarkMode]);
 
@@ -195,14 +191,12 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
       try {
         return JSON.parse(content);
       } catch (parseError) {
-        console.error('JSON 파싱 오류:', content);
         return {
           action: 'error',
           message: '응답을 처리하는 중 오류가 발생했습니다. 다시 시도해주세요.'
         };
       }
     } catch (error) {
-      console.error('GPT API 오류:', error);
       throw error;
     }
   };
@@ -306,14 +300,13 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
     
     const newSched = {
       id: Date.now(),
-      date: dateString, // YYYY-MM-DD 형식으로 저장
+      date: dateString,
       title: schedule.title,
       time: schedule.time || null,
       description: schedule.description || '',
       completed: false
     };
-    
-    console.log('추가할 일정:', newSched); // 디버깅용
+
     setSchedules(prevSchedules => [...prevSchedules, newSched]);
     setNewSchedule({ 
       title: '', 
@@ -429,7 +422,7 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-light tracking-tight">AI Calendar</h1>
+            <h1 className="text-3xl font-light tracking-tight">My Schedule</h1>
             <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               {formatDateFull(selectedDate)}
             </p>
@@ -447,7 +440,6 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
         </div>
 
         <div className="grid grid-cols-12 gap-8">
-          {/* 달력 */}
           <div className="col-span-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-light">
@@ -494,9 +486,7 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
             </div>
           </div>
 
-          {/* 사이드바 */}
           <div className="col-span-4 space-y-6">
-            {/* 일정 목록 */}
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-light">Events</h3>
@@ -654,9 +644,9 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
                     <p className="mb-2">💡 AI로 일정을 관리해보세요!</p>
                     <p className="text-xs">예시:</p>
                     <p className="text-xs">• "내일 오후 3시에 회의 일정 추가해줘"</p>
-                    <p className="text-xs">• "다음주 화요일에 프레젠테이션 추가"</p>
                     <p className="text-xs">• "오늘 일정 알려줘"</p>
                     <p className="text-xs">• "3일 후에 병원 가기 추가해줘"</p>
+                    <p className="text-xs">• "내일 일정 삭제해줘"</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
