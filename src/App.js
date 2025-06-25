@@ -8,67 +8,77 @@ const CalendarApp = () => {
   const [newSchedule, setNewSchedule] = useState({ 
     title: '', 
     date: new Date().toISOString().split('T')[0],
-    time: null, // All day로 기본 설정
+    time: null,
     description: '' 
   });
   const [addFormError, setAddFormError] = useState('');
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   
-  // 로컬 스토리지에서 다크모드 설정 불러오기
+  // 다크모드 설정
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    try {
-      const savedTheme = localStorage.getItem('ai-calendar-theme');
-      return savedTheme === 'dark';
-    } catch (error) {
-      return false;
-    }
+    const savedDarkMode = localStorage.getItem('calendar_dark_mode');
+    return savedDarkMode ? JSON.parse(savedDarkMode) : false;
   });
   
   const [loading, setLoading] = useState(false);
   
-  // 로컬 스토리지에서 일정 불러오기
-  const [schedules, setSchedules] = useState(() => {
-    try {
-      const savedSchedules = localStorage.getItem('ai-calendar-schedules');
-      return savedSchedules ? JSON.parse(savedSchedules) : [];
-    } catch (error) {
-      console.error('Failed to load schedules from localStorage:', error);
-      return [];
-    }
-  });
+  // 일정 데이터
+  const [schedules, setSchedules] = useState([]);
 
-  // 일정이 변경될 때마다 로컬 스토리지에 저장
+  // 컴포넌트 마운트 시 로컬 스토리지에서 데이터 로드
   useEffect(() => {
     try {
-      localStorage.setItem('ai-calendar-schedules', JSON.stringify(schedules));
+      const savedSchedules = localStorage.getItem('calendar_schedules');
+      if (savedSchedules) {
+        const parsedSchedules = JSON.parse(savedSchedules);
+        // 각 일정의 date를 안전하게 Date 객체로 변환
+        const schedulesWithDates = parsedSchedules.map(schedule => ({
+          ...schedule,
+          // 날짜 형식을 일관되게 YYYY-MM-DD로 변환하여 Date 객체로 생성
+          date: new Date(schedule.date.replace(/-/g, '/'))
+        }));
+        setSchedules(schedulesWithDates);
+      }
+      
+      const savedDarkMode = localStorage.getItem('calendar_dark_mode');
+      if (savedDarkMode) {
+        setIsDarkMode(JSON.parse(savedDarkMode));
+      }
     } catch (error) {
-      console.error('Failed to save schedules to localStorage:', error);
+      console.error('로컬 스토리지 데이터 로드 오류:', error);
+      // 오류 발생 시 빈 배열로 초기화
+      setSchedules([]);
+    }
+  }, []);
+
+  // 일정 데이터 변경 시 로컬 스토리지에 저장
+  useEffect(() => {
+    try {
+      const schedulesToSave = schedules.map(schedule => ({
+        ...schedule,
+        date: schedule.date.toISOString().split('T')[0] // 날짜를 YYYY-MM-DD 형식으로 저장
+      }));
+      localStorage.setItem('calendar_schedules', JSON.stringify(schedulesToSave));
+    } catch (error) {
+      console.error('로컬 스토리지 저장 오류:', error);
     }
   }, [schedules]);
 
-  // 다크모드 설정이 변경될 때마다 로컬 스토리지에 저장
+  // 다크모드 변경 시 로컬 스토리지에 저장
   useEffect(() => {
     try {
-      localStorage.setItem('ai-calendar-theme', isDarkMode ? 'dark' : 'light');
+      localStorage.setItem('calendar_dark_mode', JSON.stringify(isDarkMode));
     } catch (error) {
-      console.error('Failed to save theme to localStorage:', error);
+      console.error('다크모드 설정 저장 오류:', error);
     }
   }, [isDarkMode]);
 
-  // 현재 날짜를 YYYY-MM-DD 형식으로 반환
-  const formatDateToString = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
 
   // 날짜 문자열을 Date 객체로 안전하게 변환
   const parseDate = (dateString) => {
     if (!dateString) return new Date();
     
-    // YYYY-MM-DD 형식 확인
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(dateString)) {
       return new Date();
@@ -78,143 +88,183 @@ const CalendarApp = () => {
     return new Date(year, month - 1, day);
   };
 
-  // AI 응답을 시뮬레이션하는 함수 (실제 OpenAI API 대신)
-  const simulateAI = async (prompt) => {
-    // 간단한 패턴 매칭으로 AI 응답 시뮬레이션
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+  // GPT API 호출 함수
+  const callGPTAPI = async (prompt) => {
+    const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
     
-    const lowerPrompt = prompt.toLowerCase();
-    
-    // 시간 패턴 추출 (예: "3시", "오후 2시", "14:00" 등)
-    const timePatterns = [
-      /(\d{1,2})시(?:\s*(\d{1,2})분)?/,  // "3시", "3시 30분"
-      /오전\s*(\d{1,2})시(?:\s*(\d{1,2})분)?/,  // "오전 9시"
-      /오후\s*(\d{1,2})시(?:\s*(\d{1,2})분)?/,  // "오후 3시"
-      /(\d{1,2}):(\d{2})/  // "14:30"
-    ];
-    
-    let extractedTime = null;
-    
-    for (const pattern of timePatterns) {
-      const match = lowerPrompt.match(pattern);
-      if (match) {
-        let hour = parseInt(match[1]);
-        let minute = match[2] ? parseInt(match[2]) : 0;
-        
-        // 오후 처리
-        if (lowerPrompt.includes('오후') && hour < 12) {
-          hour += 12;
+    if (!apiKey?.trim()) {
+      throw new Error('API 키가 설정되지 않았습니다. 환경 변수(REACT_APP_OPENAI_API_KEY)를 설정해주세요.');
+    }
+
+    const currentSchedulesText = schedules.length > 0 
+      ? `현재 저장된 일정들:\n${schedules.map(s => {
+          const scheduleDate = new Date(s.date);
+          return `- ${formatDateFull(scheduleDate)}: ${s.title} ${s.time ? `(${s.time})` : '(하루 종일)'}`;
+        }).join('\n')}`
+      : '현재 저장된 일정이 없습니다.';
+
+    const systemPrompt = `당신은 캘린더 일정 관리 AI입니다. 사용자의 요청을 분석하여 JSON 형태로 응답해주세요.
+
+현재 선택된 날짜: ${formatDateFull(selectedDate)}
+오늘 날짜: ${formatDateFull(new Date())}
+
+${currentSchedulesText}
+
+응답 형식:
+1. 일정 추가 요청시:
+{
+  "action": "add",
+  "date": "YYYY-MM-DD",
+  "title": "일정 제목",
+  "time": "HH:MM" 또는 null (하루종일인 경우),
+  "message": "사용자에게 보여줄 확인 메시지"
+}
+
+2. 일정 조회 요청시:
+{
+  "action": "query",
+  "date": "YYYY-MM-DD",
+  "message": "조회 결과 메시지"
+}
+
+3. 일정 삭제 요청시:
+{
+  "action": "delete",
+  "date": "YYYY-MM-DD",
+  "title": "삭제할 일정 제목 (부분 매칭)" 또는 null (해당 날짜 전체 삭제),
+  "message": "삭제 확인 메시지"
+}
+
+4. 명령을 이해할 수 없는 경우:
+{
+  "action": "error",
+  "message": "도움말 메시지"
+}
+
+날짜 표현 해석 예시:
+- "오늘" → 오늘 날짜
+- "내일" → 오늘 + 1일
+- "다음주 월요일" → 다음주 월요일 날짜
+- "3일 후" → 오늘 + 3일
+- "7월 15일" → 올해 7월 15일 (이미 지났으면 내년)
+
+시간 표현 해석 예시:
+- "오후 3시" → "15:00"
+- "오전 9시 30분" → "09:30"
+- "14:30" → "14:30"
+- 시간 언급이 없으면 null (하루종일)
+
+JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 500
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 401) {
+          throw new Error('API 키가 유효하지 않습니다. 환경 변수에서 올바른 API 키를 설정해주세요.');
         }
-        
-        // 시간 형식으로 변환
-        extractedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-        break;
+        throw new Error(`API 오류: ${errorData.error?.message || 'Unknown error'}`);
       }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content.trim();
+      
+      try {
+        return JSON.parse(content);
+      } catch (parseError) {
+        console.error('JSON 파싱 오류:', content);
+        return {
+          action: 'error',
+          message: '응답을 처리하는 중 오류가 발생했습니다. 다시 시도해주세요.'
+        };
+      }
+    } catch (error) {
+      console.error('GPT API 오류:', error);
+      throw error;
     }
-    
-    if (lowerPrompt.includes('내일') && lowerPrompt.includes('추가')) {
-      const content = prompt.replace(/내일|추가해줘|추가|일정|\d{1,2}시|\d{1,2}:\d{2}|오전|오후|\d{1,2}분/g, '').trim();
-      return {
-        action: 'add',
-        date: formatDateToString(tomorrow),
-        content: content || '새 일정',
-        time: extractedTime // 시간이 명시되지 않으면 null (All day)
-      };
-    }
-    
-    if (lowerPrompt.includes('오늘') && lowerPrompt.includes('추가')) {
-      const content = prompt.replace(/오늘|추가해줘|추가|일정|\d{1,2}시|\d{1,2}:\d{2}|오전|오후|\d{1,2}분/g, '').trim();
-      return {
-        action: 'add',
-        date: formatDateToString(today),
-        content: content || '새 일정',
-        time: extractedTime
-      };
-    }
-    
-    if (lowerPrompt.includes('일정') && lowerPrompt.includes('추가')) {
-      const content = prompt.replace(/추가해줘|추가|일정|\d{1,2}시|\d{1,2}:\d{2}|오전|오후|\d{1,2}분/g, '').trim();
-      return {
-        action: 'add',
-        date: formatDateToString(selectedDate),
-        content: content || '새 일정',
-        time: extractedTime
-      };
-    }
-    
-    if (lowerPrompt.includes('오늘') && (lowerPrompt.includes('알려') || lowerPrompt.includes('조회'))) {
-      return {
-        action: 'query',
-        date: formatDateToString(today)
-      };
-    }
-    
-    if (lowerPrompt.includes('내일') && (lowerPrompt.includes('알려') || lowerPrompt.includes('조회'))) {
-      return {
-        action: 'query',
-        date: formatDateToString(tomorrow)
-      };
-    }
-    
-    if (lowerPrompt.includes('삭제')) {
-      return {
-        action: 'delete',
-        date: formatDateToString(selectedDate),
-        content: prompt.replace(/삭제|해줘/g, '').trim()
-      };
-    }
-    
-    return { error: "명령을 이해하지 못했습니다. 다시 시도해주세요." };
   };
 
+  // 명령 처리 함수
   const processCommand = async (message) => {
-    const parsed = await simulateAI(message);
-    
-    if (parsed.error) {
-      return parsed.error;
-    }
-
-    const targetDate = parsed.date ? parseDate(parsed.date) : selectedDate;
-    
-    if (parsed.action === "add") {
-      const newSched = {
-        id: Date.now(),
-        date: targetDate.toDateString(),
-        title: parsed.content,
-        time: parsed.time || null, // 시간이 없으면 null (All day)
-        description: '',
-        completed: false
-      };
-      setSchedules(prev => [...prev, newSched]);
-      const timeInfo = parsed.time ? `${parsed.time}에` : '';
-      return `${formatDateFull(targetDate)} ${timeInfo} '${parsed.content}' 일정이 추가되었습니다.`;
+    try {
+      const parsed = await callGPTAPI(message);
       
-    } else if (parsed.action === "query") {
-      const targetSchedules = schedules.filter(s => s.date === targetDate.toDateString());
-      if (targetSchedules.length > 0) {
-        return `${formatDateFull(targetDate)} 일정:\n${targetSchedules.map(s => 
-          `• ${s.title} ${s.time} ${s.completed ? '✓' : ''}`
-        ).join('\n')}`;
+      if (parsed.action === "add") {
+        const targetDate = parseDate(parsed.date);
+        const newSched = {
+          id: Date.now(),
+          date: targetDate.toDateString(),
+          title: parsed.title,
+          time: parsed.time || null,
+          description: '',
+          completed: false
+        };
+        setSchedules(prev => [...prev, newSched]);
+        return parsed.message || `${formatDateFull(targetDate)}에 '${parsed.title}' 일정이 추가되었습니다.`;
+        
+      } else if (parsed.action === "query") {
+        const targetDate = parseDate(parsed.date);
+        const targetSchedules = schedules.filter(s => s.date === targetDate.toDateString());
+        
+        if (targetSchedules.length > 0) {
+          const scheduleList = targetSchedules.map(s => 
+            `• ${s.title} ${s.time ? `(${s.time})` : '(하루 종일)'} ${s.completed ? '✓' : ''}`
+          ).join('\n');
+          return `${formatDateFull(targetDate)} 일정:\n${scheduleList}`;
+        } else {
+          return `${formatDateFull(targetDate)}에는 일정이 없습니다.`;
+        }
+        
+      } else if (parsed.action === "delete") {
+        const targetDate = parseDate(parsed.date);
+        const beforeCount = schedules.length;
+        
+        if (parsed.title) {
+          // 특정 일정 삭제
+          const filteredSchedules = schedules.filter(s => 
+            s.date !== targetDate.toDateString() || 
+            !s.title.toLowerCase().includes(parsed.title.toLowerCase())
+          );
+          setSchedules(filteredSchedules);
+          const deletedCount = beforeCount - filteredSchedules.length;
+          
+          if (deletedCount > 0) {
+            return parsed.message || `${formatDateFull(targetDate)}의 '${parsed.title}' 관련 일정 ${deletedCount}개가 삭제되었습니다.`;
+          } else {
+            return `${formatDateFull(targetDate)}에서 '${parsed.title}' 관련 일정을 찾을 수 없습니다.`;
+          }
+        } else {
+          // 해당 날짜의 모든 일정 삭제
+          const dateScheduleCount = schedules.filter(s => s.date === targetDate.toDateString()).length;
+          setSchedules(schedules.filter(s => s.date !== targetDate.toDateString()));
+          
+          if (dateScheduleCount > 0) {
+            return parsed.message || `${formatDateFull(targetDate)}의 모든 일정 ${dateScheduleCount}개가 삭제되었습니다.`;
+          } else {
+            return `${formatDateFull(targetDate)}에는 삭제할 일정이 없습니다.`;
+          }
+        }
       } else {
-        return `${formatDateFull(targetDate)}에는 일정이 없습니다.`;
+        return parsed.message || "명령을 이해하지 못했습니다. 다시 시도해주세요.";
       }
-      
-    } else if (parsed.action === "delete") {
-      if (parsed.content) {
-        const filteredSchedules = schedules.filter(s => 
-          s.date !== targetDate.toDateString() || 
-          !s.title.toLowerCase().includes(parsed.content.toLowerCase())
-        );
-        setSchedules(filteredSchedules);
-        return `${formatDateFull(targetDate)}의 '${parsed.content}' 관련 일정이 삭제되었습니다.`;
-      } else {
-        setSchedules(schedules.filter(s => s.date !== targetDate.toDateString()));
-        return `${formatDateFull(targetDate)}의 모든 일정이 삭제되었습니다.`;
-      }
-    } else {
-      return "알 수 없는 명령입니다.";
+    } catch (error) {
+      return error.message;
     }
   };
 
@@ -247,7 +297,7 @@ const CalendarApp = () => {
       id: Date.now(),
       date: scheduleDate.toDateString(),
       title: schedule.title,
-      time: schedule.time || null, // null이면 All day
+      time: schedule.time || null,
       description: schedule.description || '',
       completed: false
     };
@@ -255,7 +305,7 @@ const CalendarApp = () => {
     setNewSchedule({ 
       title: '', 
       date: new Date().toISOString().split('T')[0], 
-      time: null, // All day로 초기화
+      time: null,
       description: '' 
     });
     setShowAddForm(false);
@@ -284,12 +334,22 @@ const CalendarApp = () => {
     const userMessage = { type: 'user', message: chatMessage };
     setChatHistory(prev => [...prev, userMessage]);
     
-    const response = await processCommand(chatMessage);
-    const botMessage = { type: 'bot', message: response };
+    try {
+      const response = await processCommand(chatMessage);
+      const botMessage = { type: 'bot', message: response };
+      setChatHistory(prev => [...prev, botMessage]);
+    } catch (error) {
+      const errorMessage = { type: 'bot', message: '오류가 발생했습니다. 다시 시도해주세요.' };
+      setChatHistory(prev => [...prev, errorMessage]);
+    }
     
-    setChatHistory(prev => [...prev, botMessage]);
     setChatMessage('');
     setLoading(false);
+  };
+
+  // API 키 상태 확인 함수
+  const hasApiKey = () => {
+    return !!process.env.REACT_APP_OPENAI_API_KEY;
   };
 
   // 미리 정의된 시간 옵션들
@@ -360,14 +420,16 @@ const CalendarApp = () => {
               {formatDateFull(selectedDate)}
             </p>
           </div>
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className={`p-3 rounded-full transition-colors ${
-              isDarkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-100'
-            }`}
-          >
-            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className={`p-3 rounded-full transition-colors ${
+                isDarkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-100'
+              }`}
+            >
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-8">
@@ -526,7 +588,7 @@ const CalendarApp = () => {
                           {schedule.title}
                         </h4>
                         <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {schedule.time ? schedule.time : 'All Day'}
+                          {schedule.time ? schedule.time : '하루 종일'}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -565,6 +627,11 @@ const CalendarApp = () => {
               <div className="flex items-center gap-2 mb-4">
                 <Bot size={18} className="text-blue-500" />
                 <h3 className="text-lg font-light">AI Assistant</h3>
+                {!hasApiKey() && (
+                  <span className="text-xs bg-orange-500 text-white px-2 py-1 rounded">
+                    API 키 필요
+                  </span>
+                )}
               </div>
 
               <div className={`h-40 overflow-y-auto mb-4 p-3 rounded-lg ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
@@ -573,8 +640,9 @@ const CalendarApp = () => {
                     <p className="mb-2">💡 AI로 일정을 관리해보세요!</p>
                     <p className="text-xs">예시:</p>
                     <p className="text-xs">• "내일 오후 3시에 회의 일정 추가해줘"</p>
-                    <p className="text-xs">• "오늘 발표 준비 추가"</p>
+                    <p className="text-xs">• "다음주 화요일에 프레젠테이션 추가"</p>
                     <p className="text-xs">• "오늘 일정 알려줘"</p>
+                    <p className="text-xs">• "3일 후에 병원 가기 추가해줘"</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
