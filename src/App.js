@@ -17,53 +17,61 @@ const CalendarApp = () => {
   
   // 다크모드 설정
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedDarkMode = localStorage.getItem('calendar_dark_mode');
-    return savedDarkMode ? JSON.parse(savedDarkMode) : false;
+    try {
+      const savedDarkMode = localStorage.getItem('calendar_dark_mode');
+      return savedDarkMode ? JSON.parse(savedDarkMode) : false;
+    } catch (error) {
+      console.error('다크모드 설정 로드 오류:', error);
+      return false;
+    }
   });
   
   const [loading, setLoading] = useState(false);
   
   // 일정 데이터
   const [schedules, setSchedules] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false); // 불러오기 완료 여부
+
+  // 날짜를 YYYY-MM-DD 형식으로 변환하는 헬퍼 함수
+  const formatDateToString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   // 컴포넌트 마운트 시 로컬 스토리지에서 데이터 로드
   useEffect(() => {
     try {
       const savedSchedules = localStorage.getItem('calendar_schedules');
       if (savedSchedules) {
-        const parsedSchedules = JSON.parse(savedSchedules);
-        // 각 일정의 date를 안전하게 Date 객체로 변환
-        const schedulesWithDates = parsedSchedules.map(schedule => ({
-          ...schedule,
-          // 날짜 형식을 일관되게 YYYY-MM-DD로 변환하여 Date 객체로 생성
-          date: new Date(schedule.date.replace(/-/g, '/'))
+        const parsed = JSON.parse(savedSchedules);
+  
+        const normalized = parsed.map(s => ({
+          ...s,
+          date: formatDateToString(parseDate(s.date)),
+          time: s.time || null,
+          completed: s.completed || false,
+          description: s.description || ''
         }));
-        setSchedules(schedulesWithDates);
+  
+        setSchedules(normalized);
       }
-      
-      const savedDarkMode = localStorage.getItem('calendar_dark_mode');
-      if (savedDarkMode) {
-        setIsDarkMode(JSON.parse(savedDarkMode));
-      }
-    } catch (error) {
-      console.error('로컬 스토리지 데이터 로드 오류:', error);
-      // 오류 발생 시 빈 배열로 초기화
-      setSchedules([]);
+    } catch (e) {
+      console.error('일정 로딩 실패:', e);
+    } finally {
+      setIsLoaded(true); // 불러오기 완료
     }
   }, []);
 
-  // 일정 데이터 변경 시 로컬 스토리지에 저장
   useEffect(() => {
+    if (!isLoaded) return; // 초기 로딩이 끝난 후에만 저장
     try {
-      const schedulesToSave = schedules.map(schedule => ({
-        ...schedule,
-        date: schedule.date.toISOString().split('T')[0] // 날짜를 YYYY-MM-DD 형식으로 저장
-      }));
-      localStorage.setItem('calendar_schedules', JSON.stringify(schedulesToSave));
-    } catch (error) {
-      console.error('로컬 스토리지 저장 오류:', error);
+      localStorage.setItem('calendar_schedules', JSON.stringify(schedules));
+    } catch (e) {
+      console.error('일정 저장 실패:', e);
     }
-  }, [schedules]);
+  }, [schedules, isLoaded]);
 
   // 다크모드 변경 시 로컬 스토리지에 저장
   useEffect(() => {
@@ -73,7 +81,6 @@ const CalendarApp = () => {
       console.error('다크모드 설정 저장 오류:', error);
     }
   }, [isDarkMode]);
-
 
   // 날짜 문자열을 Date 객체로 안전하게 변환
   const parseDate = (dateString) => {
@@ -98,7 +105,7 @@ const CalendarApp = () => {
 
     const currentSchedulesText = schedules.length > 0 
       ? `현재 저장된 일정들:\n${schedules.map(s => {
-          const scheduleDate = new Date(s.date);
+          const scheduleDate = parseDate(s.date);
           return `- ${formatDateFull(scheduleDate)}: ${s.title} ${s.time ? `(${s.time})` : '(하루 종일)'}`;
         }).join('\n')}`
       : '현재 저장된 일정이 없습니다.';
@@ -207,9 +214,10 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
       
       if (parsed.action === "add") {
         const targetDate = parseDate(parsed.date);
+        const dateString = formatDateToString(targetDate);
         const newSched = {
           id: Date.now(),
-          date: targetDate.toDateString(),
+          date: dateString, // YYYY-MM-DD 형식으로 저장
           title: parsed.title,
           time: parsed.time || null,
           description: '',
@@ -220,7 +228,8 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
         
       } else if (parsed.action === "query") {
         const targetDate = parseDate(parsed.date);
-        const targetSchedules = schedules.filter(s => s.date === targetDate.toDateString());
+        const dateString = formatDateToString(targetDate);
+        const targetSchedules = schedules.filter(s => s.date === dateString);
         
         if (targetSchedules.length > 0) {
           const scheduleList = targetSchedules.map(s => 
@@ -233,12 +242,13 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
         
       } else if (parsed.action === "delete") {
         const targetDate = parseDate(parsed.date);
+        const dateString = formatDateToString(targetDate);
         const beforeCount = schedules.length;
         
         if (parsed.title) {
           // 특정 일정 삭제
           const filteredSchedules = schedules.filter(s => 
-            s.date !== targetDate.toDateString() || 
+            s.date !== dateString || 
             !s.title.toLowerCase().includes(parsed.title.toLowerCase())
           );
           setSchedules(filteredSchedules);
@@ -251,8 +261,8 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
           }
         } else {
           // 해당 날짜의 모든 일정 삭제
-          const dateScheduleCount = schedules.filter(s => s.date === targetDate.toDateString()).length;
-          setSchedules(schedules.filter(s => s.date !== targetDate.toDateString()));
+          const dateScheduleCount = schedules.filter(s => s.date === dateString).length;
+          setSchedules(schedules.filter(s => s.date !== dateString));
           
           if (dateScheduleCount > 0) {
             return parsed.message || `${formatDateFull(targetDate)}의 모든 일정 ${dateScheduleCount}개가 삭제되었습니다.`;
@@ -286,21 +296,24 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
   };
 
   const isSameDay = (date1, date2) => {
-    return date1.toDateString() === date2.toDateString();
+    return formatDateToString(date1) === formatDateToString(date2);
   };
 
   // 일정 관리 함수들
   const addSchedule = (schedule) => {
     const scheduleDate = schedule.date ? parseDate(schedule.date) : selectedDate;
+    const dateString = formatDateToString(scheduleDate);
     
     const newSched = {
       id: Date.now(),
-      date: scheduleDate.toDateString(),
+      date: dateString, // YYYY-MM-DD 형식으로 저장
       title: schedule.title,
       time: schedule.time || null,
       description: schedule.description || '',
       completed: false
     };
+    
+    console.log('추가할 일정:', newSched); // 디버깅용
     setSchedules(prevSchedules => [...prevSchedules, newSched]);
     setNewSchedule({ 
       title: '', 
@@ -323,7 +336,8 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
   };
 
   const getSchedulesForDate = (date) => {
-    return schedules.filter(s => s.date === date.toDateString());
+    const dateString = formatDateToString(date);
+    return schedules.filter(s => s.date === dateString);
   };
 
   // 채팅 제출 처리
