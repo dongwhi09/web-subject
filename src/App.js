@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Check, X, Send, Moon, Sun, Bot } from 'lucide-react';
 
 const CalendarApp = () => {
@@ -78,7 +78,7 @@ const processCommand = async (message) => {
         }
       }
       
-      // Extract title
+      // 제목 추출
       title = message.replace(/내일|오늘|\d{1,2}시|\d{1,2}:\d{2}|에|추가해줘|일정/g, '').trim();
       if (!title) title = '새 일정';
       
@@ -200,11 +200,13 @@ const addSchedule = (schedule) => {
     setSchedules(prevSchedules => prevSchedules.filter(s => s.id !== id));
   };
 
+  // 특정 날짜의 일정들을 필터링하여 반환
   const getSchedulesForDate = (date) => {
     const dateString = formatDateToString(date);
     return schedules.filter(s => s.date === dateString);
   };
 
+  // 채팅 메시지 전송 처리 함수
   const handleChatSubmit = async () => {
     if (!chatMessage.trim() || loading) return;
   
@@ -225,6 +227,8 @@ const addSchedule = (schedule) => {
     setLoading(false);
   };
 
+  // 일정 시간 선택 옵션 배열
+  // 8:00부터 22:00까지 30분 단위로 시간을 제공
   const timeOptions = [
     '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
     '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
@@ -451,6 +455,7 @@ const addSchedule = (schedule) => {
                     }}
                   />
                   
+                  {/* 시간 선택 드롭다운 기본값 'All Day' */}
                   <select
                     value={newSchedule.time || ''}
                     onChange={(e) => setNewSchedule({...newSchedule, time: e.target.value || null})}
