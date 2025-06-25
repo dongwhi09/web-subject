@@ -15,7 +15,8 @@ const CalendarApp = () => {
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isAiLoading, ] = useState(false);
 
   // Load schedules from localStorage into initial state
   const savedSchedules = localStorage.getItem('schedules');
@@ -31,143 +32,85 @@ const CalendarApp = () => {
     localStorage.setItem('schedules', JSON.stringify(schedules));
   }, [schedules]);
 
-  // 날짜 파싱 함수
-  const parseDate = (dateString) => {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    
-    // 오늘, 내일, 모레 등의 상대적 날짜
-    if (dateString.includes('오늘')) {
-      return new Date(today);
-    } else if (dateString.includes('내일')) {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      return tomorrow;
-    } else if (dateString.includes('모레')) {
-      const dayAfterTomorrow = new Date(today);
-      dayAfterTomorrow.setDate(today.getDate() + 2);
-      return dayAfterTomorrow;
-    }
-    
-    // 월일 패턴 (예: 6월 26일, 12월 25일)
-    const monthDayPattern = /(\d{1,2})월\s*(\d{1,2})일/;
-    const monthDayMatch = dateString.match(monthDayPattern);
-    if (monthDayMatch) {
-      const month = parseInt(monthDayMatch[1]) - 1; // JavaScript 월은 0부터 시작
-      const day = parseInt(monthDayMatch[2]);
-      return new Date(currentYear, month, day);
-    }
-    
-    // 요일 패턴 (예: 다음 주 화요일, 이번 주 금요일)
-    const dayNames = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
-    const dayPattern = new RegExp(`(다음\\s*주|이번\\s*주)?\\s*(${dayNames.join('|')})`);
-    const dayMatch = dateString.match(dayPattern);
-    if (dayMatch) {
-      const isNextWeek = dayMatch[1] && dayMatch[1].includes('다음');
-      const targetDay = dayNames.indexOf(dayMatch[2]);
-      const currentDay = today.getDay();
-      
-      let daysToAdd = targetDay - currentDay;
-      if (isNextWeek || daysToAdd <= 0) {
-        daysToAdd += 7;
-      }
-      
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() + daysToAdd);
-      return targetDate;
-    }
-    
-    // 숫자 패턴 (예: 26일)
-    const dayOnlyPattern = /(\d{1,2})일/;
-    const dayOnlyMatch = dateString.match(dayOnlyPattern);
-    if (dayOnlyMatch) {
-      const day = parseInt(dayOnlyMatch[1]);
-      const targetDate = new Date(currentYear, today.getMonth(), day);
-      
-      // 만약 해당 날짜가 이미 지났다면 다음 달로 설정
-      if (targetDate < today) {
-        targetDate.setMonth(today.getMonth() + 1);
-      }
-      
-      return targetDate;
-    }
-    
-    return null;
-  };
-
   // OpenAI API 호출 함수
-  const callOpenAI = async (userMessage) => {
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.REACT_APP_OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a calendar assistant. You help users manage their schedules. 
-              Current date: ${new Date().toDateString()}
-              Selected date: ${selectedDate.toDateString()}
-              Current schedules for selected date: ${JSON.stringify(getSchedulesForDate(selectedDate))}
-              
-              You can perform these actions:
-              1. ADD_SCHEDULE: Add a new schedule
-              2. DELETE_SCHEDULE: Delete schedules
-              3. LIST_SCHEDULES: Show schedules
-              4. UPDATE_SCHEDULE: Update existing schedule
-              
-              Always respond in JSON format with this structure:
-              {
-                "action": "ADD_SCHEDULE|DELETE_SCHEDULE|LIST_SCHEDULES|UPDATE_SCHEDULE|GENERAL_RESPONSE",
-                "data": {
-                  "title": "event title",
-                  "time": "HH:MM",
-                  "description": "description",
-                  "dateString": "original date string from user message (if any)",
-                  "scheduleId": "id for update/delete"
-                },
-                "message": "User-friendly response message in Korean"
-              }
-              
-              IMPORTANT: For ADD_SCHEDULE, if user mentions a specific date (like "6월 26일", "내일", "다음 주 화요일"), 
-              include the original date string in "dateString" field so the system can parse it correctly.
-              
-              Examples:
-              - "6월 26일에 회의" -> dateString: "6월 26일"
-              - "내일 점심약속" -> dateString: "내일"  
-              - "다음 주 화요일 발표" -> dateString: "다음 주 화요일"
-              
-              For general questions or when no specific action is needed, use "GENERAL_RESPONSE".
-              Always include a helpful Korean message.`
-            },
-            {
-              role: 'user',
-              content: userMessage
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 500
-        })
-      });
+  // OpenAI API 호출 함수 추가
+const callOpenAI = async (prompt) => {
+  const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
+  
+  if (!apiKey) {
+    return { error: "OpenAI API Key가 환경변수에 설정되어 있지 않습니다." };
+  }
 
-      if (!response.ok) {
-        throw new Error(`API call failed: ${response.status}`);
-      }
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [
+          { role: "system", content: "너는 한국어로 일정 관리 도우미야. 사용자가 자연어로 일정을 추가, 조회, 삭제하면, 날짜(date:YYYY-MM-DD), 행동(action:add|query|delete), 내용(content, 옵션)을 JSON으로 반환해. 예시: {\"action\":\"add\",\"date\":\"2025-07-05\",\"content\":\"친구 만나기\"}, {\"action\":\"query\",\"date\":\"2025-07-05\"}, {\"action\":\"delete\",\"date\":\"2025-07-05\",\"content\":\"친구 만나기\"} 또는 {\"action\":\"delete\",\"date\":\"2025-07-05\"}" },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 128,
+        temperature: 0.2,
+      }),
+    });
+    const data = await response.json();
+    
+    // 답변에서 JSON 파싱
+    const text = data.choices[0].message.content.match(/\{[\s\S]*\}/)[0];
+    return JSON.parse(text);
+  } catch (error) {
+    return { error: "AI가 명령을 이해하지 못했어요. 다시 시도해 주세요." };
+  }
+};
 
-      const data = await response.json();
-      return JSON.parse(data.choices[0].message.content);
-    } catch (error) {
-      console.error('OpenAI API Error:', error);
-      return {
-        action: 'GENERAL_RESPONSE',
-        message: 'AI 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.'
-      };
+const processCommand = async (message) => {
+  const parsed = await callOpenAI(message);
+  
+  if (parsed.error) {
+    return parsed.error;
+  }
+
+  const targetDate = parsed.date ? new Date(parsed.date) : selectedDate;
+  
+  if (parsed.action === "add") {
+    const newSched = {
+      id: Date.now(),
+      date: targetDate.toDateString(),
+      title: parsed.content,
+      time: '09:00',
+      description: '',
+      completed: false
+    };
+    setSchedules([...schedules, newSched]);
+    return `${parsed.date || formatDate(selectedDate)}에 '${parsed.content}' 일정이 추가되었습니다.`;
+    
+  } else if (parsed.action === "query") {
+    const targetSchedules = schedules.filter(s => s.date === targetDate.toDateString());
+    if (targetSchedules.length > 0) {
+      return `${parsed.date || formatDate(selectedDate)} 일정:\n${targetSchedules.map(s => 
+        `• ${s.title} ${s.time} ${s.completed ? '✓' : ''}`
+      ).join('\n')}`;
+    } else {
+      return `${parsed.date || formatDate(selectedDate)}에는 일정이 없습니다.`;
     }
-  };
+    
+  } else if (parsed.action === "delete") {
+    if (parsed.content) {
+      return `${parsed.date || formatDate(selectedDate)}의 '${parsed.content}' 관련 일정이 삭제되었습니다.`;
+    } else {
+      // 해당 날짜의 모든 일정 삭제
+      setSchedules(schedules.filter(s => s.date !== targetDate.toDateString()));
+      return `${parsed.date || formatDate(selectedDate)}의 모든 일정이 삭제되었습니다.`;
+    }
+  } else {
+    return "알 수 없는 명령입니다.";
+  }
+};
 
   // 달력 렌더링을 위한 함수들
   const getDaysInMonth = (date) => {
@@ -242,99 +185,20 @@ const CalendarApp = () => {
     return schedules.filter(s => s.date === date.toDateString());
   };
 
-  // AI 응답 처리 함수
-  const processAIResponse = (aiResponse) => {
-    let responseMessage = aiResponse.message;
-
-    switch (aiResponse.action) {
-      case 'ADD_SCHEDULE':
-        if (aiResponse.data && aiResponse.data.title) {
-          let targetDate = selectedDate;
-          
-          // 사용자가 특정 날짜를 언급했다면 해당 날짜로 파싱
-          if (aiResponse.data.dateString) {
-            const parsedDate = parseDate(aiResponse.data.dateString);
-            if (parsedDate) {
-              targetDate = parsedDate;
-            }
-          }
-          
-          const newSched = addSchedule({
-            title: aiResponse.data.title,
-            time: aiResponse.data.time || '09:00',
-            description: aiResponse.data.description || ''
-          }, targetDate);
-          
-          const dateStr = targetDate.toLocaleDateString('ko-KR', { 
-            month: 'long', 
-            day: 'numeric' 
-          });
-          
-          responseMessage = `✅ "${newSched.title}" 일정이 ${dateStr} ${newSched.time}에 추가되었습니다.`;
-        }
-        break;
-
-      case 'DELETE_SCHEDULE':
-        const todaySchedules = getSchedulesForDate(selectedDate);
-        if (todaySchedules.length > 0) {
-          setSchedules(schedules.filter(s => s.date !== selectedDate.toDateString()));
-          responseMessage = `🗑️ ${formatDate(selectedDate)} 일정이 모두 삭제되었습니다.`;
-        } else {
-          responseMessage = '삭제할 일정이 없습니다.';
-        }
-        break;
-
-      case 'LIST_SCHEDULES':
-        const currentSchedules = getSchedulesForDate(selectedDate);
-        if (currentSchedules.length > 0) {
-          responseMessage = `📅 ${formatDate(selectedDate)} 일정:\n${currentSchedules.map(s => 
-            `• ${s.title} (${s.time}) ${s.completed ? '✅' : '⏰'}`
-          ).join('\n')}`;
-        } else {
-          responseMessage = `${formatDate(selectedDate)}에는 일정이 없습니다.`;
-        }
-        break;
-
-      case 'GENERAL_RESPONSE':
-      default:
-        // 이미 aiResponse.message가 설정되어 있음
-        break;
-    }
-
-    return responseMessage;
-  };
-
   // 채팅 제출 처리
   const handleChatSubmit = async () => {
-    if (!chatMessage.trim()) return;
-
+    if (!chatMessage.trim() || loading) return;
+  
+    setLoading(true);
     const userMessage = { type: 'user', message: chatMessage };
-    setChatHistory([...chatHistory, userMessage]);
+    setChatHistory(prev => [...prev, userMessage]);
+    
+    const response = await processCommand(chatMessage);
+    const botMessage = { type: 'bot', message: response };
+    
+    setChatHistory(prev => [...prev, botMessage]);
     setChatMessage('');
-    setIsAiLoading(true);
-
-    try {
-      // AI API 호출
-      const aiResponse = await callOpenAI(chatMessage);
-      const responseMessage = processAIResponse(aiResponse);
-      
-      const botMessage = { 
-        type: 'bot', 
-        message: responseMessage,
-        isAI: true
-      };
-      
-      setChatHistory(prev => [...prev, botMessage]);
-    } catch (error) {
-      const errorMessage = { 
-        type: 'bot', 
-        message: '죄송합니다. 요청을 처리하는 중 오류가 발생했습니다.',
-        isAI: true
-      };
-      setChatHistory(prev => [...prev, errorMessage]);
-    } finally {
-      setIsAiLoading(false);
-    }
+    setLoading(false);
   };
 
   // 미리 정의된 시간 옵션들
@@ -675,18 +539,18 @@ const CalendarApp = () => {
                 />
                 <button
                   onClick={handleChatSubmit}
-                  disabled={isAiLoading || !chatMessage.trim()}
+                  disabled={loading || !chatMessage.trim()}
                   className={`p-3 rounded-lg transition-colors ${
+                    loading || !chatMessage.trim()
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  } ${
                     isDarkMode 
                       ? 'bg-white text-black hover:bg-gray-200' 
                       : 'bg-black text-white hover:bg-gray-800'
-                  } ${isAiLoading || !chatMessage.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {isAiLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                  ) : (
-                    <Send size={16} />
-                  )}
+                  }`}
+                  >
+                  {loading ? '...' : <Send size={16} />}
                 </button>
               </div>
             </div>
