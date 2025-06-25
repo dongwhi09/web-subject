@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Check, X, Send, Moon, Sun, Bot } from 'lucide-react';
 
 const CalendarApp = () => {
@@ -14,9 +14,47 @@ const CalendarApp = () => {
   const [addFormError, setAddFormError] = useState('');
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // 로컬 스토리지에서 다크모드 설정 불러오기
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    try {
+      const savedTheme = localStorage.getItem('ai-calendar-theme');
+      return savedTheme === 'dark';
+    } catch (error) {
+      return false;
+    }
+  });
+  
   const [loading, setLoading] = useState(false);
-  const [schedules, setSchedules] = useState([]);
+  
+  // 로컬 스토리지에서 일정 불러오기
+  const [schedules, setSchedules] = useState(() => {
+    try {
+      const savedSchedules = localStorage.getItem('ai-calendar-schedules');
+      return savedSchedules ? JSON.parse(savedSchedules) : [];
+    } catch (error) {
+      console.error('Failed to load schedules from localStorage:', error);
+      return [];
+    }
+  });
+
+  // 일정이 변경될 때마다 로컬 스토리지에 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem('ai-calendar-schedules', JSON.stringify(schedules));
+    } catch (error) {
+      console.error('Failed to save schedules to localStorage:', error);
+    }
+  }, [schedules]);
+
+  // 다크모드 설정이 변경될 때마다 로컬 스토리지에 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem('ai-calendar-theme', isDarkMode ? 'dark' : 'light');
+    } catch (error) {
+      console.error('Failed to save theme to localStorage:', error);
+    }
+  }, [isDarkMode]);
 
   // 현재 날짜를 YYYY-MM-DD 형식으로 반환
   const formatDateToString = (date) => {
