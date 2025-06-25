@@ -2,84 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Check, X, Send, Moon, Sun, Bot } from 'lucide-react';
 
 const CalendarApp = () => {
+  // 현재 날짜 상태 관리
   const [currentDate, setCurrentDate] = useState(new Date());
+  // 선택된 날짜 상태 관리
   const [selectedDate, setSelectedDate] = useState(new Date());
+  // 일정 추가 폼 표시 상태
   const [showAddForm, setShowAddForm] = useState(false);
+  // 새로운 일정 입력 상태
   const [newSchedule, setNewSchedule] = useState({ 
     title: '', 
     date: new Date().toISOString().split('T')[0],
     time: null,
     description: '' 
   });
+  // 일정 추가 폼 에러 메시지
   const [addFormError, setAddFormError] = useState('');
+  // 채팅 메시지 상태
   const [chatMessage, setChatMessage] = useState('');
+  // 채팅 이력 상태
   const [chatHistory, setChatHistory] = useState([]);
-  
-  // 다크모드 설정
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    try {
-      const savedDarkMode = localStorage.getItem('calendar_dark_mode');
-      return savedDarkMode ? JSON.parse(savedDarkMode) : false;
-    } catch (error) {
-      return false;
-    }
-  });
-  
+  // 다크모드 상태
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  // 로딩 상태
   const [loading, setLoading] = useState(false);
-  
-  // 일정 데이터
+  // 일정 목록 상태
   const [schedules, setSchedules] = useState([]);
-  const [isLoaded, setIsLoaded] = useState(false); // 불러오기 완료 여부
 
-  // 날짜를 YYYY-MM-DD 형식으로 변환하는 헬퍼 함수
-  const formatDateToString = (date) => {
+  // 날짜를 YYYY-MM-DD 형식의 문자열로 변환
+const formatDateToString = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
 
-  // 컴포넌트 마운트 시 로컬 스토리지에서 데이터 로드
-  useEffect(() => {
-    try {
-      const savedSchedules = localStorage.getItem('calendar_schedules');
-      if (savedSchedules) {
-        const parsed = JSON.parse(savedSchedules);
-  
-        const normalized = parsed.map(s => ({
-          ...s,
-          date: formatDateToString(parseDate(s.date)),
-          time: s.time || null,
-          completed: s.completed || false,
-          description: s.description || ''
-        }));
-  
-        setSchedules(normalized);
-      }
-    } catch (e) {
-    } finally {
-      setIsLoaded(true); // 불러오기 완료
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isLoaded) return; // 초기 로딩이 끝난 후에만 저장
-    try {
-      localStorage.setItem('calendar_schedules', JSON.stringify(schedules));
-    } catch (e) {
-    }
-  }, [schedules, isLoaded]);
-
-  // 다크모드 변경 시 로컬 스토리지에 저장
-  useEffect(() => {
-    try {
-      localStorage.setItem('calendar_dark_mode', JSON.stringify(isDarkMode));
-    } catch (error) {
-    }
-  }, [isDarkMode]);
-
-  // 날짜 문자열을 Date 객체로 안전하게 변환
-  const parseDate = (dateString) => {
+  // 문자열로 된 날짜를 Date 객체로 파싱
+const parseDate = (dateString) => {
     if (!dateString) return new Date();
     
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -91,197 +49,110 @@ const CalendarApp = () => {
     return new Date(year, month - 1, day);
   };
 
-  // GPT API 호출 함수
-  const callGPTAPI = async (prompt) => {
-    const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
+  // 채팅 명령어 처리 함수
+const processCommand = async (message) => {
+    // API 호출 지연 시뮬레이션
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    if (!apiKey?.trim()) {
-      throw new Error('API 키가 설정되지 않았습니다. 환경 변수(REACT_APP_OPENAI_API_KEY)를 설정해주세요.');
-    }
-
-    const currentSchedulesText = schedules.length > 0 
-      ? `현재 저장된 일정들:\n${schedules.map(s => {
-          const scheduleDate = parseDate(s.date);
-          return `- ${formatDateFull(scheduleDate)}: ${s.title} ${s.time ? `(${s.time})` : '(하루 종일)'}`;
-        }).join('\n')}`
-      : '현재 저장된 일정이 없습니다.';
-
-    const systemPrompt = `당신은 캘린더 일정 관리 AI입니다. 사용자의 요청을 분석하여 JSON 형태로 응답해주세요.
-
-현재 선택된 날짜: ${formatDateFull(selectedDate)}
-오늘 날짜: ${formatDateFull(new Date())}
-
-${currentSchedulesText}
-
-응답 형식:
-1. 일정 추가 요청시:
-{
-  "action": "add",
-  "date": "YYYY-MM-DD",
-  "title": "일정 제목",
-  "time": "HH:MM" 또는 null (하루종일인 경우),
-  "message": "사용자에게 보여줄 확인 메시지"
-}
-
-2. 일정 조회 요청시:
-{
-  "action": "query",
-  "date": "YYYY-MM-DD",
-  "message": "조회 결과 메시지"
-}
-
-3. 일정 삭제 요청시:
-{
-  "action": "delete",
-  "date": "YYYY-MM-DD",
-  "title": "삭제할 일정 제목 (부분 매칭)" 또는 null (해당 날짜 전체 삭제),
-  "message": "삭제 확인 메시지"
-}
-
-4. 명령을 이해할 수 없는 경우:
-{
-  "action": "error",
-  "message": "도움말 메시지"
-}
-
-날짜 표현 해석 예시:
-- "오늘" → 오늘 날짜
-- "내일" → 오늘 + 1일
-- "다음주 월요일" → 다음주 월요일 날짜
-- "3일 후" → 오늘 + 3일
-- "7월 15일" → 올해 7월 15일 (이미 지났으면 내년)
-
-시간 표현 해석 예시:
-- "오후 3시" → "15:00"
-- "오전 9시 30분" → "09:30"
-- "14:30" → "14:30"
-- 시간 언급이 없으면 null (하루종일)
-
-JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
-
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 500
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (response.status === 401) {
-          throw new Error('API 키가 유효하지 않습니다. 환경 변수에서 올바른 API 키를 설정해주세요.');
-        }
-        throw new Error(`API 오류: ${errorData.error?.message || 'Unknown error'}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0].message.content.trim();
+    const lowerMessage = message.toLowerCase();
+    
+    // 명령어 파싱
+    if (lowerMessage.includes('추가') || lowerMessage.includes('일정')) {
+      let targetDate = selectedDate;
+      let title = message;
+      let time = null;
       
-      try {
-        return JSON.parse(content);
-      } catch (parseError) {
-        return {
-          action: 'error',
-          message: '응답을 처리하는 중 오류가 발생했습니다. 다시 시도해주세요.'
-        };
+      if (lowerMessage.includes('내일')) {
+        targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + 1);
+      } else if (lowerMessage.includes('오늘')) {
+        targetDate = new Date();
       }
-    } catch (error) {
-      throw error;
-    }
-  };
-
-  // 명령 처리 함수
-  const processCommand = async (message) => {
-    try {
-      const parsed = await callGPTAPI(message);
       
-      if (parsed.action === "add") {
-        const targetDate = parseDate(parsed.date);
-        const dateString = formatDateToString(targetDate);
-        const newSched = {
-          id: Date.now(),
-          date: dateString, // YYYY-MM-DD 형식으로 저장
-          title: parsed.title,
-          time: parsed.time || null,
-          description: '',
-          completed: false
-        };
-        setSchedules(prev => [...prev, newSched]);
-        return parsed.message || `${formatDateFull(targetDate)}에 '${parsed.title}' 일정이 추가되었습니다.`;
-        
-      } else if (parsed.action === "query") {
-        const targetDate = parseDate(parsed.date);
-        const dateString = formatDateToString(targetDate);
-        const targetSchedules = schedules.filter(s => s.date === dateString);
-        
-        if (targetSchedules.length > 0) {
-          const scheduleList = targetSchedules.map(s => 
-            `• ${s.title} ${s.time ? `(${s.time})` : '(하루 종일)'} ${s.completed ? '✓' : ''}`
-          ).join('\n');
-          return `${formatDateFull(targetDate)} 일정:\n${scheduleList}`;
-        } else {
-          return `${formatDateFull(targetDate)}에는 일정이 없습니다.`;
+      const timeMatch = message.match(/(\d{1,2})시|(\d{1,2}):(\d{2})/);
+      if (timeMatch) {
+        if (timeMatch[1]) {
+          time = `${timeMatch[1].padStart(2, '0')}:00`;
+        } else if (timeMatch[2] && timeMatch[3]) {
+          time = `${timeMatch[2].padStart(2, '0')}:${timeMatch[3]}`;
         }
-        
-      } else if (parsed.action === "delete") {
-        const targetDate = parseDate(parsed.date);
-        const dateString = formatDateToString(targetDate);
-        const beforeCount = schedules.length;
-        
-        if (parsed.title) {
-          // 특정 일정 삭제
-          const filteredSchedules = schedules.filter(s => 
-            s.date !== dateString || 
-            !s.title.toLowerCase().includes(parsed.title.toLowerCase())
-          );
-          setSchedules(filteredSchedules);
-          const deletedCount = beforeCount - filteredSchedules.length;
-          
-          if (deletedCount > 0) {
-            return parsed.message || `${formatDateFull(targetDate)}의 '${parsed.title}' 관련 일정 ${deletedCount}개가 삭제되었습니다.`;
-          } else {
-            return `${formatDateFull(targetDate)}에서 '${parsed.title}' 관련 일정을 찾을 수 없습니다.`;
-          }
-        } else {
-          // 해당 날짜의 모든 일정 삭제
-          const dateScheduleCount = schedules.filter(s => s.date === dateString).length;
-          setSchedules(schedules.filter(s => s.date !== dateString));
-          
-          if (dateScheduleCount > 0) {
-            return parsed.message || `${formatDateFull(targetDate)}의 모든 일정 ${dateScheduleCount}개가 삭제되었습니다.`;
-          } else {
-            return `${formatDateFull(targetDate)}에는 삭제할 일정이 없습니다.`;
-          }
-        }
+      }
+      
+      // Extract title
+      title = message.replace(/내일|오늘|\d{1,2}시|\d{1,2}:\d{2}|에|추가해줘|일정/g, '').trim();
+      if (!title) title = '새 일정';
+      
+      const dateString = formatDateToString(targetDate);
+      const newSched = {
+        id: Date.now(),
+        date: dateString,
+        title: title,
+        time: time,
+        description: '',
+        completed: false
+      };
+      setSchedules(prev => [...prev, newSched]);
+      return `${formatDateFull(targetDate)}에 '${title}' 일정이 추가되었습니다.`;
+      
+    } else if (lowerMessage.includes('조회') || lowerMessage.includes('알려')) {
+      let targetDate = selectedDate;
+      
+      if (lowerMessage.includes('내일')) {
+        targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + 1);
+      } else if (lowerMessage.includes('오늘')) {
+        targetDate = new Date();
+      }
+      
+      const dateString = formatDateToString(targetDate);
+      const targetSchedules = schedules.filter(s => s.date === dateString);
+      
+      if (targetSchedules.length > 0) {
+        const scheduleList = targetSchedules.map(s => 
+          `• ${s.title} ${s.time ? `(${s.time})` : '(하루 종일)'} ${s.completed ? '✓' : ''}`
+        ).join('\n');
+        return `${formatDateFull(targetDate)} 일정:\n${scheduleList}`;
       } else {
-        return parsed.message || "명령을 이해하지 못했습니다. 다시 시도해주세요.";
+        return `${formatDateFull(targetDate)}에는 일정이 없습니다.`;
       }
-    } catch (error) {
-      return error.message;
+      
+    } else if (lowerMessage.includes('삭제')) {
+      let targetDate = selectedDate;
+      
+      if (lowerMessage.includes('내일')) {
+        targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + 1);
+      } else if (lowerMessage.includes('오늘')) {
+        targetDate = new Date();
+      }
+      
+      const dateString = formatDateToString(targetDate);
+      const beforeCount = schedules.length;
+      setSchedules(schedules.filter(s => s.date !== dateString));
+      const deletedCount = beforeCount - schedules.filter(s => s.date !== dateString).length;
+      
+      if (deletedCount > 0) {
+        return `${formatDateFull(targetDate)}의 일정 ${deletedCount}개가 삭제되었습니다.`;
+      } else {
+        return `${formatDateFull(targetDate)}에는 삭제할 일정이 없습니다.`;
+      }
     }
+    
+    return "명령을 이해하지 못했습니다. '일정 추가', '일정 조회', '일정 삭제' 등의 명령을 사용해보세요.";
   };
 
-  // 달력 렌더링을 위한 함수들
-  const getDaysInMonth = (date) => {
+  // 해당 월의 일수를 반환
+const getDaysInMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   };
 
-  const getFirstDayOfMonth = (date) => {
+  // 해당 월의 첫 번째 날짜의 요일을 반환
+const getFirstDayOfMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   };
 
-  const formatDateFull = (date) => {
+  // 날짜를 한국어 형식으로 포맷팅
+const formatDateFull = (date) => {
     return date.toLocaleDateString('ko-KR', {
       year: 'numeric',
       month: 'long',
@@ -289,12 +160,13 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
     });
   };
 
-  const isSameDay = (date1, date2) => {
+  // 두 날짜가 같은 날짜인지 확인
+const isSameDay = (date1, date2) => {
     return formatDateToString(date1) === formatDateToString(date2);
   };
 
-  // 일정 관리 함수들
-  const addSchedule = (schedule) => {
+  // 새로운 일정 추가
+const addSchedule = (schedule) => {
     const scheduleDate = schedule.date ? parseDate(schedule.date) : selectedDate;
     const dateString = formatDateToString(scheduleDate);
     
@@ -333,7 +205,6 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
     return schedules.filter(s => s.date === dateString);
   };
 
-  // 채팅 제출 처리
   const handleChatSubmit = async () => {
     if (!chatMessage.trim() || loading) return;
   
@@ -354,12 +225,6 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
     setLoading(false);
   };
 
-  // API 키 상태 확인 함수
-  const hasApiKey = () => {
-    return !!process.env.REACT_APP_OPENAI_API_KEY;
-  };
-
-  // 미리 정의된 시간 옵션들
   const timeOptions = [
     '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
     '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
@@ -367,18 +232,15 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
     '20:00', '20:30', '21:00', '21:30', '22:00'
   ];
 
-  // 달력 렌더링
   const renderCalendar = () => {
     const daysInMonth = getDaysInMonth(currentDate);
     const firstDay = getFirstDayOfMonth(currentDate);
     const days = [];
 
-    // 빈 칸 추가
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-12"></div>);
     }
 
-    // 날짜 추가
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
       const hasSchedules = getSchedulesForDate(date).length > 0;
@@ -417,122 +279,192 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
   };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
-      <div className="max-w-6xl mx-auto p-6">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between mb-8">
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: isDarkMode ? '#000000' : '#ffffff',
+      color: isDarkMode ? '#ffffff' : '#000000',
+      transition: 'all 0.3s ease',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
           <div>
-            <h1 className="text-3xl font-light tracking-tight">My Schedule</h1>
-            <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <h1 style={{ fontSize: '2rem', fontWeight: '300', letterSpacing: '-0.025em', margin: 0 }}>
+              My Schedule
+            </h1>
+            <p style={{ 
+              fontSize: '0.875rem', 
+              marginTop: '4px', 
+              color: isDarkMode ? '#9ca3af' : '#6b7280',
+              margin: '4px 0 0 0'
+            }}>
               {formatDateFull(selectedDate)}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-3 rounded-full transition-colors ${
-                isDarkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-100'
-              }`}
+              style={{
+                padding: '12px',
+                borderRadius: '50%',
+                border: 'none',
+                backgroundColor: isDarkMode ? 'transparent' : 'transparent',
+                color: isDarkMode ? '#ffffff' : '#000000',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = isDarkMode ? '#1f2937' : '#f3f4f6'}
+              onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
             >
               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-8">
-          <div className="col-span-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-light">
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '32px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '300', margin: 0 }}>
                 {currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
               </h2>
-              <div className="flex items-center gap-2">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <button
                   onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
-                  className={`p-2 rounded-full transition-colors ${
-                    isDarkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-100'
-                  }`}
+                  style={{
+                    padding: '8px',
+                    borderRadius: '50%',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    color: isDarkMode ? '#ffffff' : '#000000',
+                    cursor: 'pointer'
+                  }}
                 >
                   <ChevronLeft size={18} />
                 </button>
                 <button
                   onClick={() => setCurrentDate(new Date())}
-                  className={`px-4 py-2 text-sm rounded-full transition-colors ${
-                    isDarkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-100'
-                  }`}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '0.875rem',
+                    borderRadius: '50px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    color: isDarkMode ? '#ffffff' : '#000000',
+                    cursor: 'pointer'
+                  }}
                 >
                   Today
                 </button>
                 <button
                   onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
-                  className={`p-2 rounded-full transition-colors ${
-                    isDarkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-100'
-                  }`}
+                  style={{
+                    padding: '8px',
+                    borderRadius: '50%',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    color: isDarkMode ? '#ffffff' : '#000000',
+                    cursor: 'pointer'
+                  }}
                 >
                   <ChevronRight size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-7 gap-1 mb-4">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '16px' }}>
               {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-                <div key={day + index} className={`text-center text-sm py-3 font-medium ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <div key={day + index} style={{ 
+                  textAlign: 'center', 
+                  fontSize: '0.875rem', 
+                  padding: '12px 0', 
+                  fontWeight: '500',
+                  color: isDarkMode ? '#6b7280' : '#9ca3af'
+                }}>
                   {day}
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-1">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
               {renderCalendar()}
             </div>
           </div>
 
-          <div className="col-span-4 space-y-6">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-light">Events</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '1.125rem', fontWeight: '300', margin: 0 }}>Events</h3>
                 <button
                   onClick={() => setShowAddForm(!showAddForm)}
-                  className={`p-2 rounded-full transition-colors ${
-                    isDarkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-100'
-                  }`}
+                  style={{
+                    padding: '8px',
+                    borderRadius: '50%',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    color: isDarkMode ? '#ffffff' : '#000000',
+                    cursor: 'pointer'
+                  }}
                 >
                   <Plus size={18} />
                 </button>
               </div>
 
               {showAddForm && (
-                <div className={`mb-6 p-4 rounded-lg ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                <div style={{ 
+                  marginBottom: '24px', 
+                  padding: '16px', 
+                  borderRadius: '8px',
+                  backgroundColor: isDarkMode ? '#1f2937' : '#f9fafb'
+                }}>
                   <input
                     type="text"
                     placeholder="Event title"
                     value={newSchedule.title}
                     onChange={(e) => setNewSchedule({...newSchedule, title: e.target.value})}
-                    className={`w-full p-3 rounded-lg border-0 text-sm mb-3 focus:outline-none ${
-                      isDarkMode 
-                        ? 'bg-black text-white placeholder-gray-500' 
-                        : 'bg-white text-black placeholder-gray-400'
-                    }`}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '0.875rem',
+                      marginBottom: '12px',
+                      backgroundColor: isDarkMode ? '#000000' : '#ffffff',
+                      color: isDarkMode ? '#ffffff' : '#000000',
+                      boxSizing: 'border-box'
+                    }}
                   />
                   
                   <input
                     type="date"
                     value={newSchedule.date}
                     onChange={(e) => setNewSchedule({...newSchedule, date: e.target.value})}
-                    className={`w-full p-3 rounded-lg border-0 text-sm mb-3 focus:outline-none ${
-                      isDarkMode 
-                        ? 'bg-black text-white' 
-                        : 'bg-white text-black'
-                    }`}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '0.875rem',
+                      marginBottom: '12px',
+                      backgroundColor: isDarkMode ? '#000000' : '#ffffff',
+                      color: isDarkMode ? '#ffffff' : '#000000',
+                      boxSizing: 'border-box'
+                    }}
                   />
                   
                   <select
                     value={newSchedule.time || ''}
                     onChange={(e) => setNewSchedule({...newSchedule, time: e.target.value || null})}
-                    className={`w-full p-3 rounded-lg border-0 text-sm mb-3 focus:outline-none ${
-                      isDarkMode 
-                        ? 'bg-black text-white' 
-                        : 'bg-white text-black'
-                    }`}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '0.875rem',
+                      marginBottom: '12px',
+                      backgroundColor: isDarkMode ? '#000000' : '#ffffff',
+                      color: isDarkMode ? '#ffffff' : '#000000',
+                      boxSizing: 'border-box'
+                    }}
                   >
                     <option value="">All Day</option>
                     {timeOptions.map(time => (
@@ -540,7 +472,7 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
                     ))}
                   </select>
                   
-                  <div className="flex gap-2">
+                  <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                       onClick={() => {
                         if (!newSchedule.title.trim()) {
@@ -550,19 +482,30 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
                         setAddFormError('');
                         addSchedule(newSchedule);
                       }}
-                      className={`flex-1 py-2 text-sm rounded-lg transition-colors ${
-                        isDarkMode 
-                          ? 'bg-white text-black hover:bg-gray-200' 
-                          : 'bg-black text-white hover:bg-gray-800'
-                      }`}
+                      style={{
+                        flex: 1,
+                        padding: '8px 0',
+                        fontSize: '0.875rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: isDarkMode ? '#ffffff' : '#000000',
+                        color: isDarkMode ? '#000000' : '#ffffff',
+                        cursor: 'pointer'
+                      }}
                     >
                       Add
                     </button>
                     <button
                       onClick={() => setShowAddForm(false)}
-                      className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                        isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'
-                      }`}
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '0.875rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                        color: isDarkMode ? '#ffffff' : '#000000',
+                        cursor: 'pointer'
+                      }}
                     >
                       Cancel
                     </button>
@@ -571,46 +514,64 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
               )}
 
               {addFormError && (
-                <div className="text-red-500 text-sm mt-2">
+                <div style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '8px' }}>
                   {addFormError}
                 </div>
               )}
 
-              <div className="space-y-2">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {getSchedulesForDate(selectedDate).map(schedule => (
                   <div
                     key={schedule.id}
-                    className={`p-3 rounded-lg transition-all ${
-                      schedule.completed 
-                        ? (isDarkMode ? 'bg-gray-900 opacity-60' : 'bg-gray-50 opacity-60')
-                        : (isDarkMode ? 'bg-gray-900' : 'bg-gray-50')
-                    }`}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      backgroundColor: isDarkMode ? '#1f2937' : '#f9fafb',
+                      opacity: schedule.completed ? 0.6 : 1
+                    }}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h4 className={`font-medium ${schedule.completed ? 'line-through' : ''}`}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ 
+                          fontWeight: '500', 
+                          margin: 0,
+                          textDecoration: schedule.completed ? 'line-through' : 'none'
+                        }}>
                           {schedule.title}
                         </h4>
-                        <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p style={{ 
+                          fontSize: '0.875rem', 
+                          marginTop: '4px', 
+                          margin: '4px 0 0 0',
+                          color: isDarkMode ? '#9ca3af' : '#6b7280'
+                        }}>
                           {schedule.time ? schedule.time : '하루 종일'}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <button
                           onClick={() => toggleScheduleComplete(schedule.id)}
-                          className={`p-1 rounded transition-colors ${
-                            schedule.completed 
-                              ? 'text-green-500' 
-                              : isDarkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-black'
-                          }`}
+                          style={{
+                            padding: '4px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            backgroundColor: 'transparent',
+                            color: schedule.completed ? '#10b981' : (isDarkMode ? '#6b7280' : '#9ca3af'),
+                            cursor: 'pointer'
+                          }}
                         >
                           <Check size={16} />
                         </button>
                         <button
                           onClick={() => deleteSchedule(schedule.id)}
-                          className={`p-1 rounded transition-colors ${
-                            isDarkMode ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'
-                          }`}
+                          style={{
+                            padding: '4px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            backgroundColor: 'transparent',
+                            color: isDarkMode ? '#6b7280' : '#9ca3af',
+                            cursor: 'pointer'
+                          }}
                         >
                           <X size={16} />
                         </button>
@@ -619,49 +580,61 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
                   </div>
                 ))}
                 {getSchedulesForDate(selectedDate).length === 0 && (
-                  <p className={`text-center py-8 text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <p style={{ 
+                    textAlign: 'center', 
+                    padding: '32px 0', 
+                    fontSize: '0.875rem',
+                    color: isDarkMode ? '#6b7280' : '#9ca3af'
+                  }}>
                     No events today
                   </p>
                 )}
               </div>
             </div>
 
-            {/* AI 채팅 */}
             <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Bot size={18} className="text-blue-500" />
-                <h3 className="text-lg font-light">AI Assistant</h3>
-                {!hasApiKey() && (
-                  <span className="text-xs bg-orange-500 text-white px-2 py-1 rounded">
-                    API 키 필요
-                  </span>
-                )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                <Bot size={18} style={{ color: '#3b82f6' }} />
+                <h3 style={{ fontSize: '1.125rem', fontWeight: '300', margin: 0 }}>AI Assistant</h3>
               </div>
 
-              <div className={`h-40 overflow-y-auto mb-4 p-3 rounded-lg ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+              <div style={{ 
+                height: '160px', 
+                overflowY: 'auto', 
+                marginBottom: '16px', 
+                padding: '12px', 
+                borderRadius: '8px',
+                backgroundColor: isDarkMode ? '#1f2937' : '#f9fafb'
+              }}>
                 {chatHistory.length === 0 ? (
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    <p className="mb-2">💡 AI로 일정을 관리해보세요!</p>
-                    <p className="text-xs">예시:</p>
-                    <p className="text-xs">• "내일 오후 3시에 회의 일정 추가해줘"</p>
-                    <p className="text-xs">• "오늘 일정 알려줘"</p>
-                    <p className="text-xs">• "3일 후에 병원 가기 추가해줘"</p>
-                    <p className="text-xs">• "내일 일정 삭제해줘"</p>
+                  <div style={{ fontSize: '0.875rem', color: isDarkMode ? '#6b7280' : '#9ca3af' }}>
+                    <p style={{ marginBottom: '8px' }}>💡 AI로 일정을 관리해보세요!</p>
+                    <p style={{ fontSize: '0.75rem', margin: 0 }}>예시:</p>
+                    <p style={{ fontSize: '0.75rem', margin: 0 }}>• "내일 오후 3시에 회의 일정 추가해줘"</p>
+                    <p style={{ fontSize: '0.75rem', margin: 0 }}>• "오늘 일정 알려줘"</p>
+                    <p style={{ fontSize: '0.75rem', margin: 0 }}>• "3일 후에 병원 가기 추가해줘"</p>
+                    <p style={{ fontSize: '0.75rem', margin: 0 }}>• "내일 일정 삭제해줘"</p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {chatHistory.map((chat, index) => (
                       <div
                         key={index}
-                        className={`p-2 rounded text-sm ${
-                          chat.type === 'user' 
-                            ? (isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-black')
-                            : (isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-blue-50 text-gray-700')
-                        }`}
+                        style={{
+                          padding: '8px',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                          backgroundColor: chat.type === 'user' 
+                            ? (isDarkMode ? '#374151' : '#e5e7eb')
+                            : (isDarkMode ? '#4b5563' : '#dbeafe'),
+                          color: chat.type === 'user'
+                            ? (isDarkMode ? '#ffffff' : '#000000')
+                            : (isDarkMode ? '#d1d5db' : '#374151')
+                        }}
                       >
-                        <div className="flex items-start gap-2">
-                          {chat.type === 'bot' && <Bot size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />}
-                          <div className="whitespace-pre-line">{chat.message}</div>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                          {chat.type === 'bot' && <Bot size={14} style={{ color: '#3b82f6', marginTop: '2px', flexShrink: 0 }} />}
+                          <div style={{ whiteSpace: 'pre-line' }}>{chat.message}</div>
                         </div>
                       </div>
                     ))}
@@ -669,7 +642,9 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
                 )}
               </div>
 
-              <div className="flex gap-2">
+              {/* 채팅 입력 영역 */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {/* 채팅 입력 필드 */}
                 <input
                   type="text"
                   placeholder="AI에게 일정 관리를 요청해보세요..."
@@ -677,26 +652,33 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
                   onChange={(e) => setChatMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !loading && handleChatSubmit()}
                   disabled={loading}
-                  className={`flex-1 p-3 rounded-lg border-0 text-sm focus:outline-none ${
-                    isDarkMode 
-                      ? 'bg-gray-900 text-white placeholder-gray-500' 
-                      : 'bg-gray-100 text-black placeholder-gray-400'
-                  } ${loading ? 'opacity-50' : ''}`}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontSize: '0.875rem',
+                    backgroundColor: isDarkMode ? '#1f2937' : '#f3f4f6',
+                    color: isDarkMode ? '#ffffff' : '#000000',
+                    opacity: loading ? 0.5 : 1,
+                    boxSizing: 'border-box'
+                  }}
                 />
+                {/* 채팅 전송 버튼 */}
                 <button
                   onClick={handleChatSubmit}
                   disabled={loading || !chatMessage.trim()}
-                  className={`p-3 rounded-lg transition-colors ${
-                    loading || !chatMessage.trim()
-                      ? 'opacity-50 cursor-not-allowed'
-                      : ''
-                  } ${
-                    isDarkMode 
-                      ? 'bg-white text-black hover:bg-gray-200' 
-                      : 'bg-black text-white hover:bg-gray-800'
-                  }`}
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: isDarkMode ? '#ffffff' : '#000000',
+                    color: isDarkMode ? '#000000' : '#ffffff',
+                    cursor: loading || !chatMessage.trim() ? 'not-allowed' : 'pointer',
+                    opacity: loading || !chatMessage.trim() ? 0.5 : 1
+                  }}
                 >
-                  {loading ? '...' : <Send size={16} />}
+                  {loading ? '...' : <Send size={16} />}  {/* 로딩 중일 때는 ... 표시, 아니면 전송 아이콘 표시 */}
                 </button>
               </div>
             </div>
@@ -704,7 +686,7 @@ JSON만 응답하고 다른 텍스트는 포함하지 마세요.`;
         </div>
       </div>
     </div>
-  );
+  );  // 컴포넌트 렌더링 종료 */
 };
 
 export default CalendarApp;
